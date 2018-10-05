@@ -8,6 +8,7 @@ gem 'puppet', puppetversion
 gem 'rake'
 gem 'rubocop'
 gem 'vault'
+gem 'debouncer'
 
 # # rspec must be v2 for ruby 1.8.7
 # if RUBY_VERSION >= '1.8.7' && RUBY_VERSION < '1.9'

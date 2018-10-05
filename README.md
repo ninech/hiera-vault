@@ -43,10 +43,6 @@ hierarchy:
   - name: "Hiera-vault lookup"
     lookup_key: hiera_vault
     options:
-      confine_to_keys:
-        - '^vault_.*'
-        - '^.*_password$'
-        - '^password.*'
       ssl_verify: false
       address: https://vault.foobar.com:8200
       token: <insert-your-vault-token-here>
@@ -70,13 +66,24 @@ The following are optional configuration parameters supported in the `options` h
 
 `token`: The token to authenticate with Vault, also read as ENV["VAULT_TOKEN"]
 
-`:confine_to_keys: ` : Only use this backend if the key matches one of the regexes in the array
-
-      confine_to_keys:
-        - "application.*"
-        - "apache::.*"
-
 `:ssl_verify`: Specify whether to verify SSL certificates (default: true)
+
+### Usage
+
+This will only lookup in vault if the one of the prefixes is set:
+
+`vault_key`: Gets keys from Vault
+`vault_list`: Lists keys from Vault
+
+#### Examples
+
+```ruby
+# Get the key at mount/db_pass
+lookup('vault_key::db_pass')
+
+# List all keys at mount/
+lookup('vault_list::/')
+```
 
 ### Author
 

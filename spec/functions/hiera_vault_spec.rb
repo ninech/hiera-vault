@@ -10,9 +10,8 @@ describe FakeFunction do
   let :context do
     ctx = instance_double('Puppet::LookupContext')
     allow(ctx).to receive(:cache_has_key).and_return(false)
-    #allow(ctx).to receive(:explain).and_return(:nil)
     allow(ctx).to receive(:explain) { |&block| puts(block.call()) }
-    allow(ctx).to receive(:not_found).and_throw(:no_such_key)
+    allow(ctx).to receive(:not_found)
     allow(ctx).to receive(:cache).with(String, anything) do |_, val|
       val
     end
@@ -44,31 +43,18 @@ describe FakeFunction do
   describe "#lookup_key" do
 
     it 'should run' do
-      expect( function.lookup_key( 'test_key', vault_options, context ) ).to be_nil
+      expect( function.lookup_key( 'vault_key::test_key', vault_options, context ) ).to be_nil
     end
 
     context 'supplied with invalid parameters' do
       it 'should die when default_field_parse is not in [ string, json ]' do
-        expect { function.lookup_key( 'test_key', {'default_field_parse' => 'invalid'}, context ) }
+        expect { function.lookup_key( 'vault_key::test_key', {'default_field_parse' => 'invalid'}, context ) }
             .to raise_error(ArgumentError, '[hiera-vault] invalid value for default_field_parse: \'invalid\', should be one of \'string\',\'json\'')
       end
       it 'should die when default_field_behavior is not in [ ignore, only ]' do
-        expect { function.lookup_key( 'test_key', {'default_field_behavior' => 'invalid'}, context ) }
+        expect { function.lookup_key( 'vault_key::test_key', {'default_field_behavior' => 'invalid'}, context ) }
             .to raise_error(ArgumentError, '[hiera-vault] invalid value for default_field_behavior: \'invalid\', should be one of \'ignore\',\'only\'')
       end
-      it 'should die when confine_to_keys is no array' do
-        expect { function.lookup_key( 'test_key', {'confine_to_keys' => '^vault.*$'}, context ) }
-            .to raise_error(ArgumentError, '[hiera-vault] confine_to_keys must be an array')
-      end
-      it 'should die when passing invalid regexes' do
-        expect { function.lookup_key( 'test_key', {'confine_to_keys' => [ '[' ]}, context ) }
-            .to raise_error(Puppet::DataBinding::LookupError, '[hiera-vault] creating regexp failed with: premature end of char-class: /[/')
-      end
-      it 'should return "not found"' do
-        expect { function.lookup_key( 'test_key', {'confine_to_keys' => [ '^vault.*$' ]}, context ) }
-            .to throw_symbol(:no_such_key)
-      end
-
       context 'accessing vault' do
         let :options do
           {
@@ -81,7 +67,7 @@ describe FakeFunction do
           }
         end
         it 'without a token should return nil' do
-          expect( function.lookup_key( 'test_key', options, context ) ).to be_nil
+          expect( function.lookup_key( 'vault_key::test_key', options, context ) ).to be_nil
         end
       end
     end
@@ -91,7 +77,7 @@ describe FakeFunction do
         vault_test_client.sys.seal
       end
       it 'should crash' do
-        expect { function.lookup_key( 'test_key', vault_options, context ) }
+        expect { function.lookup_key( 'vault_key::test_key', vault_options, context ) }
             .to raise_error(Puppet::DataBinding::LookupError, '[hiera-vault] Skipping backend. Configuration error: [hiera-vault] vault is sealed')
       end
       after(:context) do
@@ -110,8 +96,20 @@ describe FakeFunction do
         vault_test_client.logical.write('puppet/broken_json_key', value: '[,')
       end
 
+      it 'should list keys' do
+        expect( function.lookup_key( 'vault_list::/', vault_options, context ) )
+            .to eq([
+              'array_key',
+              'broken_json_key',
+              'hash_key',
+              'multiple_values_key',
+              'test_key',
+              'values_key'
+            ])
+      end
+
       it 'should accept the local dev vault' do
-        expect( function.lookup_key( 'test_key', vault_options, context ) )
+        expect( function.lookup_key( 'vault_key::test_key', vault_options, context ) )
             .to include('value' => 'default')
       end
 
@@ -119,17 +117,17 @@ describe FakeFunction do
         expect( function.lookup_key( 'doesnt_exist', vault_options, context ) ).to be_nil
       end
       it 'should return the default_field value if present' do
-        expect( function.lookup_key('test_key', { 'default_field' => 'value' }.merge(vault_options), context) )
+        expect( function.lookup_key('vault_key::test_key', { 'default_field' => 'value' }.merge(vault_options), context) )
             .to eq('default')
       end
 
       it 'should return a hash lacking a default field' do
-        expect(function.lookup_key('multiple_values_key', vault_options, context))
+        expect(function.lookup_key('vault_key::multiple_values_key', vault_options, context))
             .to include( 'a' => 1, 'b' => 2, 'c' => 3 )
       end
 
       it 'should return an array parsed from json' do
-        expect( function.lookup_key('array_key', {
+        expect( function.lookup_key('vault_key::array_key', {
             'default_field' => 'value',
             'default_field_parse' => 'json'
         }.merge(vault_options), context) )
@@ -137,7 +135,7 @@ describe FakeFunction do
       end
 
       it 'should return a hash parsed from json' do
-        expect( function.lookup_key('hash_key', {
+        expect( function.lookup_key('vault_key::hash_key', {
             'default_field' => 'value',
             'default_field_parse' => 'json'
         }.merge(vault_options), context) )
@@ -145,7 +143,7 @@ describe FakeFunction do
       end
 
       it 'should return the string value on broken json content' do
-        expect( function.lookup_key('broken_json_key', {
+        expect( function.lookup_key('vault_key::broken_json_key', {
             'default_field' => 'value',
             'default_field_parse' => 'json'
         }.merge(vault_options), context) )
@@ -153,25 +151,25 @@ describe FakeFunction do
       end
 
       it 'should return *only* the default_field value if present' do
-        expect( function.lookup_key('test_key', {
+        expect( function.lookup_key('vault_key::test_key', {
             'default_field' => 'value',
             'default_field_behavior' => 'only',
         }.merge(vault_options), context) )
             .to eq('default')
 
-        expect( function.lookup_key('values_key', {
+        expect( function.lookup_key('vault_key::values_key', {
             'default_field' => 'value',
             'default_field_behavior' => 'only',
         }.merge(vault_options), context) )
             .to include('a' => 1, 'b' => 2, 'c' => 3, 'value' => 123)
-        expect( function.lookup_key('values_key', {
+        expect( function.lookup_key('vault_key::values_key', {
             'default_field' => 'value',
         }.merge(vault_options), context) )
             .to eq(123)
       end
 
       it 'should return nil with value field not existing and default_field_behavior set to ignore' do
-        expect( function.lookup_key('multiple_values_key', {
+        expect( function.lookup_key('vault_key::multiple_values_key', {
             'default_field' => 'value',
             'default_field_behavior' => 'ignore'
         }.merge(vault_options), context) )
